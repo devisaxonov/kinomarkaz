@@ -2,21 +2,20 @@
 
 namespace App\Core\Database;
 
-use PDO;
-use PDOException;
+use mysqli;
 use RuntimeException;
 
 class Database
 {
-    private ?PDO $pdo = null;
+    private ?mysqli $mysqli = null;
 
-    public function getConnection(): PDO
+    public function getConnection(): mysqli
     {
-        if ($this->pdo === null) {
+        if ($this->mysqli === null) {
             $this->connect();
         }
         
-        return $this->pdo;
+        return $this->mysqli;
     }
 
     private function connect(): void
@@ -27,17 +26,12 @@ class Database
         $user = $_ENV['DB_USERNAME'] ?? 'root';
         $pass = $_ENV['DB_PASSWORD'] ?? '';
 
-        $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4";
-
-        $options = [
-            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES   => false,
-        ];
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
         try {
-            $this->pdo = new PDO($dsn, $user, $pass, $options);
-        } catch (PDOException $e) {
+            $this->mysqli = new mysqli($host, $user, $pass, $db, (int)$port);
+            $this->mysqli->set_charset("utf8mb4");
+        } catch (\mysqli_sql_exception $e) {
             throw new RuntimeException("Database Connection Error: " . $e->getMessage());
         }
     }

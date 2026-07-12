@@ -14,9 +14,13 @@ $telegram = new TelegramService();
 // Reklama yuborish tezligi (Cron 1 daqiqada bir marta ishlaydi)
 $limit = 50;
 
-$messages = $db->getConnection()
-               ->query("SELECT * FROM broadcast_queue LIMIT $limit")
-               ->fetchAll(PDO::FETCH_ASSOC);
+$result = $db->getConnection()->query("SELECT * FROM broadcast_queue LIMIT $limit");
+$messages = [];
+if ($result) {
+    while ($row = $result->fetch_assoc()) {
+        $messages[] = $row;
+    }
+}
 
 if (empty($messages)) {
     echo "No pending broadcasts.";
@@ -35,8 +39,9 @@ foreach ($messages as $msg) {
     }
 
     // Yuborib bo'lgach bazadan o'chirib yuboramiz
-    $stmt = $db->getConnection()->prepare("DELETE FROM broadcast_queue WHERE id = :id");
-    $stmt->execute(['id' => $msg['id']]);
+    $stmt = $db->getConnection()->prepare("DELETE FROM broadcast_queue WHERE id = ?");
+    $stmt->bind_param("i", $msg['id']);
+    $stmt->execute();
 }
 
 echo "Processed " . count($messages) . " broadcasts.";

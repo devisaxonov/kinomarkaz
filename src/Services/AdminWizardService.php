@@ -42,8 +42,11 @@ class AdminWizardService
                 }
 
                 // Bazadagi barcha foydalanuvchilar ID sini olamiz
-                $stmt = $this->db->getConnection()->query("SELECT telegram_id FROM users");
-                $userIds = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+                $result = $this->db->getConnection()->query("SELECT telegram_id FROM users");
+                $userIds = [];
+                while ($row = $result->fetch_assoc()) {
+                    $userIds[] = $row['telegram_id'];
+                }
 
                 $count = 0;
                 foreach ($userIds as $uid) {

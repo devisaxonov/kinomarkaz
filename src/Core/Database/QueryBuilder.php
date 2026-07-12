@@ -2,11 +2,11 @@
 
 namespace App\Core\Database;
 
-use PDO;
+use mysqli;
 
 class QueryBuilder
 {
-    private PDO $pdo;
+    private mysqli $mysqli;
     private string $table;
     
     private array $wheres = [];
@@ -14,9 +14,9 @@ class QueryBuilder
     private ?int $limit = null;
     private string $order = '';
 
-    public function __construct(PDO $pdo, string $table)
+    public function __construct(mysqli $mysqli, string $table)
     {
-        $this->pdo = $pdo;
+        $this->mysqli = $mysqli;
         $this->table = $table;
     }
 
@@ -52,6 +52,21 @@ class QueryBuilder
         return count($results) > 0 ? $results[0] : null;
     }
 
+    private function getBindTypes(array $bindings): string
+    {
+        $types = '';
+        foreach ($bindings as $binding) {
+            if (is_int($binding)) {
+                $types .= 'i';
+            } elseif (is_float($binding)) {
+                $types .= 'd';
+            } else {
+                $types .= 's';
+            }
+        }
+        return $types;
+    }
+
     public function get(array $columns = ['*']): array
     {
         $cols = implode(', ', $columns);
@@ -69,10 +84,27 @@ class QueryBuilder
             $sql .= " LIMIT {$this->limit}";
         }
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->bindings);
+        $stmt = $this->mysqli->prepare($sql);
+        
+        if (!empty($this->bindings)) {
+            $types = $this->getBindTypes($this->bindings);
+            $stmt->bind_param($types, ...$this->bindings);
+        }
 
-        return $stmt->fetchAll();
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result === false) {
+            return [];
+        }
+
+        $rows = [];
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
+        }
+
+        $stmt->close();
+        return $rows;
     }
 
     public function insert(array $data): int
@@ -82,10 +114,19 @@ class QueryBuilder
 
         $sql = "INSERT INTO {$this->table} ($columns) VALUES ($placeholders)";
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(array_values($data));
+        $stmt = $this->mysqli->prepare($sql);
+        
+        $values = array_values($data);
+        if (!empty($values)) {
+            $types = $this->getBindTypes($values);
+            $stmt->bind_param($types, ...$values);
+        }
 
-        return (int) $this->pdo->lastInsertId();
+        $stmt->execute();
+        $id = $stmt->insert_id;
+        $stmt->close();
+
+        return (int) $id;
     }
 
     public function update(array $data): bool
@@ -106,8 +147,17 @@ class QueryBuilder
             $updateBindings = array_merge($updateBindings, $this->bindings);
         }
 
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute($updateBindings);
+        $stmt = $this->mysqli->prepare($sql);
+        
+        if (!empty($updateBindings)) {
+            $types = $this->getBindTypes($updateBindings);
+            $stmt->bind_param($types, ...$updateBindings);
+        }
+
+        $success = $stmt->execute();
+        $stmt->close();
+        
+        return $success;
     }
     
     public function delete(): bool
@@ -118,21 +168,43 @@ class QueryBuilder
             $sql .= " WHERE " . implode(' AND ', $this->wheres);
         }
 
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute($this->bindings);
+        $stmt = $this->mysqli->prepare($sql);
+        
+        if (!empty($this->bindings)) {
+            $types = $this->getBindTypes($this->bindings);
+            $stmt->bind_param($types, ...$this->bindings);
+        }
+
+        $success = $stmt->execute();
+        $stmt->close();
+        
+        return $success;
     }
 
     public function count(): int
     {
-        $sql = "SELECT COUNT(*) FROM {$this->table}";
+        $sql = "SELECT COUNT(*) as count FROM {$this->table}";
 
         if (!empty($this->wheres)) {
             $sql .= " WHERE " . implode(' AND ', $this->wheres);
         }
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->bindings);
+        $stmt = $this->mysqli->prepare($sql);
+        
+        if (!empty($this->bindings)) {
+            $types = $this->getBindTypes($this->bindings);
+            $stmt->bind_param($types, ...$this->bindings);
+        }
 
-        return (int) $stmt->fetchColumn();
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $count = 0;
+        if ($result !== false && $row = $result->fetch_assoc()) {
+            $count = (int)$row['count'];
+        }
+
+        $stmt->close();
+        return $count;
     }
 }

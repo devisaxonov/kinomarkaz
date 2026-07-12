@@ -43,10 +43,11 @@ class SearchService
                     WHEN views >= 100 AND views < 1000 THEN views + 10001
                     ELSE views + 1 
                 END
-                WHERE code = :code";
+                WHERE code = ?";
         
         $stmt = $this->db->getConnection()->prepare($sql);
-        $stmt->execute(['code' => $code]);
+        $stmt->bind_param("s", $code);
+        $stmt->execute();
     }
 
     public function logSearchHistory(int $userId, string $code, ?int $movieId): void
