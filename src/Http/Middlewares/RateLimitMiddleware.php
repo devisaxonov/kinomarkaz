@@ -6,18 +6,34 @@ use App\Core\Http\MiddlewareInterface;
 use App\Core\Http\Request;
 use App\Core\Http\Response;
 use Closure;
-use Redis;
 
 class RateLimitMiddleware implements MiddlewareInterface
 {
-    private Redis $redis;
     private const MAX_REQUESTS = 30;
     private const DECAY_MINUTES = 1;
+    private string $filePath;
 
     public function __construct()
     {
-        $this->redis = new Redis();
-        $this->redis->connect($_ENV['REDIS_HOST'] ?? '127.0.0.1', 6379);
+        $this->filePath = __DIR__ . '/../../../storage/rate_limit.json';
+        $dir = dirname($this->filePath);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+        if (!file_exists($this->filePath)) {
+            file_put_contents($this->filePath, json_encode([]));
+        }
+    }
+
+    private function getCache(): array
+    {
+        $content = file_get_contents($this->filePath);
+        return $content ? json_decode($content, true) : [];
+    }
+
+    private function saveCache(array $data): void
+    {
+        file_put_contents($this->filePath, json_encode($data));
     }
 
     public function handle(Request $request, Closure $next): Response
@@ -32,22 +48,37 @@ class RateLimitMiddleware implements MiddlewareInterface
             return $next($request);
         }
 
-        $key = "rate_limit:user:{$userId}";
+        $data = $this->getCache();
+        $currentTime = time();
         
-        $attempts = (int) $this->redis->get($key);
+        // Cleanup old limits
+        $changed = false;
+        foreach ($data as $id => $info) {
+            if ($currentTime - $info['time'] > self::DECAY_MINUTES * 60) {
+                unset($data[$id]);
+                $changed = true;
+            }
+        }
 
-        if ($attempts >= self::MAX_REQUESTS) {
+        $userLimit = $data[$userId] ?? ['attempts' => 0, 'time' => $currentTime];
+        
+        // Reset if time expired
+        if ($currentTime - $userLimit['time'] > self::DECAY_MINUTES * 60) {
+            $userLimit = ['attempts' => 0, 'time' => $currentTime];
+        }
+
+        if ($userLimit['attempts'] >= self::MAX_REQUESTS) {
+            if ($changed) $this->saveCache($data);
             return (new Response())->json([
                 'status' => 'error',
                 'message' => 'Too Many Requests (Flood Protection)'
             ], 200);
         }
 
-        $this->redis->incr($key);
+        $userLimit['attempts']++;
+        $data[$userId] = $userLimit;
         
-        if ($attempts === 0) {
-            $this->redis->expire($key, self::DECAY_MINUTES * 60);
-        }
+        $this->saveCache($data);
 
         return $next($request);
     }

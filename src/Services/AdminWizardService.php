@@ -45,18 +45,13 @@ class AdminWizardService
                 $stmt = $this->db->getConnection()->query("SELECT telegram_id FROM users");
                 $userIds = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
-                $redis = new \Redis();
-                $redis->connect($_ENV['REDIS_HOST'] ?? '127.0.0.1', 6379);
-
                 $count = 0;
                 foreach ($userIds as $uid) {
-                    // O'ziga ham yuborib test qilishi mumkin
-                    $data = json_encode([
+                    $this->db->table('broadcast_queue')->insert([
                         'user_id' => $uid,
                         'from_channel_id' => $chatId,
                         'message_id' => $messageId
                     ]);
-                    $redis->rPush('queue:broadcast', $data);
                     $count++;
                 }
 

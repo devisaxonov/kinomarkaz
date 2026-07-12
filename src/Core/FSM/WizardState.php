@@ -2,38 +2,64 @@
 
 namespace App\Core\FSM;
 
-use Redis;
-
 class WizardState
 {
-    private Redis $redis;
-    private const PREFIX = 'fsm_wizard:';
-    private const TTL = 3600;
+    private string $filePath;
 
     public function __construct()
     {
-        $this->redis = new Redis();
-        $this->redis->connect($_ENV['REDIS_HOST'] ?? '127.0.0.1', 6379);
+        $this->filePath = __DIR__ . '/../../../storage/fsm_states.json';
+        $dir = dirname($this->filePath);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+        if (!file_exists($this->filePath)) {
+            file_put_contents($this->filePath, json_encode([]));
+        }
+    }
+
+    private function readData(): array
+    {
+        $content = file_get_contents($this->filePath);
+        return $content ? json_decode($content, true) : [];
+    }
+
+    private function writeData(array $data): void
+    {
+        file_put_contents($this->filePath, json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
     public function get(int $userId): ?array
     {
-        $data = $this->redis->get(self::PREFIX . $userId);
-        return $data ? json_decode($data, true) : null;
+        $data = $this->readData();
+        return $data[$userId] ?? null;
     }
 
     public function set(int $userId, string $step, array $payload = []): void
     {
-        $data = json_encode([
+        $data = $this->readData();
+        $data[$userId] = [
             'step' => $step,
-            'payload' => $payload
-        ], JSON_UNESCAPED_UNICODE);
+            'payload' => $payload,
+            'updated_at' => time()
+        ];
+        
+        // Cleanup old states (> 1 hour)
+        foreach ($data as $id => $state) {
+            if (isset($state['updated_at']) && (time() - $state['updated_at'] > 3600)) {
+                unset($data[$id]);
+            }
+        }
 
-        $this->redis->setex(self::PREFIX . $userId, self::TTL, $data);
+        $this->writeData($data);
     }
 
     public function clear(int $userId): void
     {
-        $this->redis->del(self::PREFIX . $userId);
+        $data = $this->readData();
+        if (isset($data[$userId])) {
+            unset($data[$userId]);
+            $this->writeData($data);
+        }
     }
 }

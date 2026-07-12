@@ -3,38 +3,24 @@
 namespace App\Services;
 
 use App\Core\Database\Database;
-use Redis;
 
 class SearchService
 {
     private Database $db;
-    private Redis $redis;
-    private const CACHE_TTL = 86400;
 
     public function __construct(Database $db)
     {
         $this->db = $db;
-        $this->redis = new Redis();
-        $this->redis->connect($_ENV['REDIS_HOST'] ?? '127.0.0.1', 6379);
     }
 
     public function findMovieByCode(string $code): ?array
     {
-        $cacheKey = "movie:{$code}";
-        
-        $cached = $this->redis->get($cacheKey);
-        if ($cached) {
-            $this->pushViewToQueue($code);
-            return json_decode($cached, true);
-        }
-
         $movie = $this->db->table('movies')
                           ->where('code', $code)
                           ->first();
 
         if ($movie) {
-            $this->redis->setex($cacheKey, self::CACHE_TTL, json_encode($movie, JSON_UNESCAPED_UNICODE));
-            $this->pushViewToQueue($code);
+            $this->incrementViews($code);
         }
 
         return $movie;
@@ -48,19 +34,35 @@ class SearchService
                         ->get(['title', 'code', 'views']);
     }
 
-    private function pushViewToQueue(string $code): void
+    private function incrementViews(string $code): void
     {
-        $this->redis->rPush('queue:movie_views', $code);
+        // Simple synchronous query to increment views
+        // With the +10000 boost logic if views are between 100 and 1000
+        $sql = "UPDATE movies 
+                SET views = CASE 
+                    WHEN views >= 100 AND views < 1000 THEN views + 10001
+                    ELSE views + 1 
+                END
+                WHERE code = :code";
+        
+        $stmt = $this->db->getConnection()->prepare($sql);
+        $stmt->execute(['code' => $code]);
     }
 
     public function logSearchHistory(int $userId, string $code, ?int $movieId): void
     {
+        $dir = __DIR__ . '/../../../storage';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+        
         $logData = json_encode([
+            'date' => date('Y-m-d H:i:s'),
             'user_id' => $userId,
             'search_query' => $code,
             'movie_id' => $movieId
-        ]);
+        ]) . PHP_EOL;
         
-        $this->redis->rPush('queue:search_history', $logData);
+        file_put_contents($dir . '/search_history.log', $logData, FILE_APPEND);
     }
 }

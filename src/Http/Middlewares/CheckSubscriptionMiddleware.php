@@ -5,20 +5,36 @@ namespace App\Http\Middlewares;
 use App\Services\TelegramService;
 use App\Repositories\ChannelRepository;
 use App\Core\Localization\Lang;
-use Redis;
 
 class CheckSubscriptionMiddleware
 {
     private TelegramService $telegram;
     private ChannelRepository $channelRepo;
-    private Redis $redis;
+    private string $cacheFile;
 
     public function __construct(TelegramService $telegram, ChannelRepository $channelRepo)
     {
         $this->telegram = $telegram;
         $this->channelRepo = $channelRepo;
-        $this->redis = new Redis();
-        $this->redis->connect($_ENV['REDIS_HOST'] ?? '127.0.0.1', 6379);
+        $this->cacheFile = __DIR__ . '/../../../storage/sub_cache.json';
+        $dir = dirname($this->cacheFile);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+        if (!file_exists($this->cacheFile)) {
+            file_put_contents($this->cacheFile, json_encode([]));
+        }
+    }
+
+    private function getCache(): array
+    {
+        $content = file_get_contents($this->cacheFile);
+        return $content ? json_decode($content, true) : [];
+    }
+
+    private function saveCache(array $data): void
+    {
+        file_put_contents($this->cacheFile, json_encode($data));
     }
 
     public function check(int $userId): bool
@@ -28,11 +44,10 @@ class CheckSubscriptionMiddleware
             return true;
         }
 
-        $cacheKey = "sub_status:{$userId}";
+        $cache = $this->getCache();
 
-        // Keshni tekshiramiz (15 daqiqada 1 marta Telegram API ga murojaat qilinadi)
-        if ($this->redis->get($cacheKey)) {
-            return true;
+        if (isset($cache[$userId]) && (time() - $cache[$userId] < 900)) {
+            return true; // Valid for 15 minutes
         }
 
         foreach ($channels as $channelRow) {
@@ -45,8 +60,16 @@ class CheckSubscriptionMiddleware
             }
         }
 
-        // Hamma kanalga a'zo bo'lsa, 15 daqiqaga keshlanadi
-        $this->redis->setex($cacheKey, 900, 'subscribed');
+        $cache[$userId] = time();
+        
+        // Cleanup old cache entries
+        foreach ($cache as $id => $time) {
+            if (time() - $time > 900) {
+                unset($cache[$id]);
+            }
+        }
+
+        $this->saveCache($cache);
         return true;
     }
 
@@ -63,7 +86,6 @@ class CheckSubscriptionMiddleware
             ];
         }
 
-        // Tasdiqlash tugmasi
         $inlineKeyboard[] = [
             ['text' => "✅ Tasdiqlash", 'callback_data' => 'check_sub']
         ];
