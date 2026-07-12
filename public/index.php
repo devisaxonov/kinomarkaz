@@ -13,13 +13,14 @@ $container = new Container();
 
 $router = new Router($container);
 
-$router->get('/', function (Request $request) {
-    return (new Response())->json(['message' => 'Bot yadro dvigateli ishlamoqda 🚀']);
+$request = Request::capture();
+$uri = $request->getUri();
+
+$router->get($uri, function (Request $request) {
+    return (new Response())->json(['message' => 'Bot yadro dvigateli ishlamoqda 🚀 (Shared Hosting Mode)']);
 });
 
-// Telegram Webhook marshruti
-$router->post('/webhook/telegram', [\App\Http\Controllers\TelegramController::class, 'handle']);
+$router->post($uri, [\App\Http\Controllers\TelegramController::class, 'handle']);
 
-$request = Request::capture();
 $response = $router->resolve($request);
 $response->send();
