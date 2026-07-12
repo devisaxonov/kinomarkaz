@@ -54,7 +54,11 @@ class Router
             }
 
         } catch (\Throwable $e) {
-            file_put_contents('/tmp/error.log', "Error: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n", FILE_APPEND);
+            $logDir = __DIR__ . '/../../../storage';
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0777, true);
+            }
+            file_put_contents($logDir . '/error.log', "[" . date('Y-m-d H:i:s') . "] Error: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n\n", FILE_APPEND);
             return (new Response())->json([
                 'error' => 'Internal Server Error',
                 'message' => $e->getMessage()

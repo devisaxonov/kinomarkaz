@@ -31,13 +31,15 @@ class TelegramService
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
+        $logFile = __DIR__ . '/../../../storage/error.log';
+
         if ($error) {
-            file_put_contents('/tmp/error.log', "Curl Error: $error\n", FILE_APPEND);
+            file_put_contents($logFile, "Curl Error: $error\n", FILE_APPEND);
             return null;
         }
 
         if ($httpCode >= 400) {
-            file_put_contents('/tmp/error.log', "Telegram API Error ($httpCode): $response\nPayload: $payload\n", FILE_APPEND);
+            file_put_contents($logFile, "Telegram API Error ($httpCode): $response\nPayload: $payload\n", FILE_APPEND);
         }
 
         return json_decode($response, true);
