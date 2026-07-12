@@ -9,6 +9,9 @@ use App\Core\Routing\Router;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
+$dotenv->safeLoad();
+
 $container = new Container();
 
 $router = new Router($container);
