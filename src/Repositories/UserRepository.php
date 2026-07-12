@@ -43,8 +43,13 @@ class UserRepository
 
     public function getAllTelegramIds(): array
     {
-        // Pdo query
-        $stmt = $this->db->getConnection()->query("SELECT telegram_id FROM {$this->table}");
-        return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        $result = $this->db->getConnection()->query("SELECT telegram_id FROM {$this->table}");
+        $ids = [];
+        if ($result) {
+            while ($row = $result->fetch_assoc()) {
+                $ids[] = $row['telegram_id'];
+            }
+        }
+        return $ids;
     }
 }

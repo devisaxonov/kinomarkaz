@@ -6,7 +6,6 @@ use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
 use App\Services\TelegramService;
-use App\Services\RedisService;
 
 class Container
 {
