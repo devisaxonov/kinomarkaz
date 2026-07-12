@@ -65,6 +65,9 @@ class Request
             if (str_starts_with($key, 'HTTP_')) {
                 $name = str_replace('_', '-', strtolower(substr($key, 5)));
                 $headers[$name] = $value;
+            } elseif (in_array($key, ['CONTENT_TYPE', 'CONTENT_LENGTH'])) {
+                $name = str_replace('_', '-', strtolower($key));
+                $headers[$name] = $value;
             }
         }
         return $headers;
